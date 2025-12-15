@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Final Fantasy Tactics PvP</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            text-align: center; 
+            background: #222; 
+            color: #fff; 
+            margin: 0; 
+            padding: 10px; 
+            touch-action: manipulation; 
+        }
+        #menu { 
+            position: fixed; 
+            top: 0; left: 0; 
+            width: 100%; height: 100%; 
+            background: rgba(0,0,0,0.8); 
+            display: flex; 
+            flex-direction: column; 
+            justify-content: center; 
+            align-items: center; 
+            z-index: 10; 
+        }
+        #menu button { 
+            padding: 20px 40px; 
+            font-size: 24px; 
+            background: #0066cc; 
+            border: none; 
+            border-radius: 8px; 
+            color: #fff; 
+            cursor: pointer; 
+        }
+        #game { 
+            max-width: 100%; 
+            margin: 0 auto; 
+            display: none; 
+        }
+        #grid { 
+            display: grid; 
+            grid-template-columns: repeat(10, 1fr); 
+            gap: 2px; 
+            margin: 20px auto; 
+            max-width: min(600px, 95vw); 
+            justify-content: center; 
+        }
+        .cell { 
+            width: min(60px, 7vw); 
+            height: min(60px, 7vw); 
+            background: #444; 
+            border: 2px solid #888; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            cursor: pointer; 
+            font-weight: bold; 
+            font-size: min(18px, 4vw); 
+            user-select: none; 
+        }
+        .cell:active { transform: scale(0.95); }
+        .cell.blue { background: #0066cc !important; }
+        .cell.red { background: #cc0000 !important; }
+        .cell.selected { background: #88ff88 !important; border-color: #00ff00; }
+        .cell.high { background-color: #666 !important; }
+        .cell.obstacle { background-color: #000 !important; }
+        #controls { 
+            display: flex; 
+            flex-wrap: wrap; 
+            justify-content: center; 
+            gap: 10px; 
+            margin: 20px 0; 
+        }
+        button { 
+            padding: 15px 20px; 
+            font-size: 18px; 
+            min-height: 50px; 
+            flex: 1 1 120px; 
+            max-width: 150px; 
+            border: none; 
+            border-radius: 8px; 
+            background: #444; 
+            color: #fff; 
+            cursor: pointer; 
+        }
+        button:active { background: #666; }
+        #battleCode { 
+            width: 90%; 
+            max-width: 400px; 
+            padding: 12px; 
+            font-size: 16px; 
+            margin: 10px 0; 
+            border: 1px solid #555; 
+            border-radius: 4px; 
+            background: #333; 
+            color: #fff; 
+        }
+        #log { 
+            height: 120px; 
+            overflow-y: scroll; 
+            border: 1px solid #555; 
+            padding: 15px; 
+            margin-top: 10px; 
+            background: #333; 
+            text-align: left; 
+        }
+        #hud { 
+            background: #333; 
+            border: 1px solid #555; 
+            padding: 15px; 
+            margin: 10px auto; 
+            max-width: 400px; 
+            display: none; 
+            text-align: left; 
+        }
+        #hud progress { 
+            width: 100%; 
+            height: 10px; 
+        }
+        #skills { 
+            background: #333; 
+            border: 1px solid #555; 
+            padding: 15px; 
+            margin: 10px auto; 
+            max-width: 400px; 
+            display: none; 
+            text-align: center; 
+        }
+        #skills button { 
+            margin: 5px; 
+            width: 80%; 
+        }
+        @media (max-width: 600px) {
+            #controls { flex-direction: column; }
+            button { flex: 1 1 auto; max-width: none; width: 100%; }
+            .cell { width: min(70px, 9vw); height: min(70px, 9vw); }
+        }
+    </style>
+</head>
+<body>
+    <div id="menu">
+        <h1>Final Fantasy Tactics PvP</h1>
+        <button onclick="startGame()">Press to Start</button>
+    </div>
+    <div id="game">
+        <h2>Battle Session</h2>
+        <div id="grid"></div>
+        <div id="hud"></div>
+        <div id="skills"></div>
+        <div id="controls">
+            <button onclick="move()">Move</button>
+            <button onclick="attack()">Attack</button>
+            <button onclick="showSkillsMenu()">Skill</button>
+            <button onclick="wait()">Wait</button>
+            <button onclick="shareBattle()">Share Code</button>
+            <button onclick="loadBattle()">Load Code</button>
+        </div>
+        <input type="text" id="battleCode" placeholder="Your battle code" readonly>
+        <div id="log"></div>
+    </div>
+    <script>
+        // Game state
+        const state = {
+            grid: Array(100).fill(null),
+            terrain: Array(100).fill({type: 'flat', elev: 0, passable: true}),
+            units: [
+                // Blue team
+                { id: 'b1', name: 'Warrior', class: 'Warrior', icon: '⚔️', facing: 'N', x: 2, y: 2, hp: 50, maxHp: 50, mp: 20, maxMp: 20, speed: 10, atk: 18, def: 20, mag: 5, range: 1, maxMove: 4, skills: ['Taunt', 'Cleave'], team: 'blue' },
+                { id: 'b2', name: 'Healer', class: 'Healer', icon: '✨', facing: 'N', x: 3, y: 2, hp: 40, maxHp: 40, mp: 40, maxMp: 40, speed: 12, atk: 8, def: 12, mag: 18, range: 1, maxMove: 5, skills: ['Restore', 'Aura'], team: 'blue' },
+                { id: 'b3', name: 'Mage', class: 'Mage', icon: '🔮', facing: 'N', x: 4, y: 2, hp: 30, maxHp: 30, mp: 50, maxMp: 50, speed: 15, atk: 6, def: 8, mag: 20, range: 4, maxMove: 4, skills: ['Fireball', 'Frostbind'], team: 'blue' },
+                // Red team
+                { id: 'r1', name: 'Archer', class: 'Archer', icon: '🏹', facing: 'S', x: 7, y: 7, hp: 35, maxHp: 35, mp: 30, maxMp: 30, speed: 16, atk: 17, def: 13, mag: 7, range: 5, maxMove: 5, skills: ['Pierce', 'Volley'], team: 'red' },
+                { id: 'r2', name: 'Rogue', class: 'Rogue', icon: '🥷', facing: 'S', x: 6, y: 7, hp: 35, maxHp: 35, mp: 30, maxMp: 30, speed: 20, atk: 16, def: 9, mag: 6, range: 2, maxMove: 6, skills: ['Backstab', 'Vanish'], team: 'red' },
+                { id: 'r3', name: 'Warrior', class: 'Warrior', icon: '⚔️', facing: 'S', x: 8, y: 7, hp: 50, maxHp: 50, mp: 20, maxMp: 20, speed: 10, atk: 18, def: 20, mag: 5, range: 1, maxMove: 4, skills: ['Taunt', 'Cleave'], team: 'red' }
+            ],
+            turnOrder: [],
+            currentUnit: null,
+            selectedCell: null,
+            currentTeam: 'blue',
+            battleId: ''
+        };
+
+        // Skill costs and basic effects (expand as needed)
+        const skillData = {
+            Taunt: { cost: 0, desc: 'Forces nearby enemies to target you' },
+            Cleave: { cost: 5, desc: 'Hits target and adjacent' },
+            Restore: { cost: 8, desc: 'Heals 20 HP to ally' },
+            Aura: { cost: 12, desc: '+5 DEF to allies' },
+            Fireball: { cost: 10, desc: '15 MAG dmg in AoE' },
+            Frostbind: { cost: 7, desc: '10 dmg + slow' },
+            Pierce: { cost: 6, desc: '1.5x ATK, ignores DEF' },
+            Volley: { cost: 9, desc: 'Hits 2 random enemies' },
+            Backstab: { cost: 4, desc: '2x ATK from behind' },
+            Vanish: { cost: 0, desc: 'Skip turn, +crit next' }
+        };
+
+        // Helpers
+        const dirMap = { N: '↑', S: '↓', E: '→', W: '←' };
+        const oppDir = { N: 'S', S: 'N', E: 'W', W: 'E' };
+        function getFacingToTarget(unit, tx, ty) {
+            const dx = tx - unit.x, dy = ty - unit.y;
+            if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? 'E' : 'W';
+            return dy > 0 ? 'S' : 'N';
+        }
+        function isBehind(attacker, target) {
+            const relDir = getFacingToTarget(target, attacker.x, attacker.y);
+            return relDir === oppDir[target.facing];
+        }
+        function manhattanDist(x1, y1, x2, y2) { return Math.abs(x1 - x2) + Math.abs(y1 - y2); }
+        function getTerrain(x, y) { return state.terrain[y * 10 + x]; }
+        function getElev(x, y) { return getTerrain(x, y).elev; }
+        function hasLoS(x1, y1, x2, y2) {
+            let dx = Math.abs(x2 - x1), dy = Math.abs(y2 - y1);
+            let sx = x1 < x2 ? 1 : -1, sy = y1 < y2 ? 1 : -1;
+            let err = dx - dy;
+            let x = x1, y = y1;
+            while (true) {
+                if (getTerrain(x, y).type === 'obstacle') return false;
+                if (x === x2 && y === y2) return true;
+                let e2 = 2 * err;
+                if (e2 > -dy) { err -= dy; x += sx; }
+                if (e2 < dx) { err += dx; y += sy; }
+            }
+        }
+
+        // Start game
+        function startGame() {
+            state.battleId = crypto.randomUUID().slice(0, 8).toUpperCase();
+            document.getElementById('battleCode').value = state.battleId;
+            document.getElementById('menu').style.display = 'none';
+            document.getElementById('game').style.display = 'block';
+            init();
+            logMessage(`Battle ID: ${state.battleId} - Send to opponent!`);
+        }
+
+        // Initialize
+        function init() {
+            // Randomize terrain (avoid unit spawns)
+            for (let i = 0; i < 100; i++) {
+                if (Math.random() < 0.1) state.terrain[i] = {type: 'obstacle', elev: 0, passable: false};
+                else if (Math.random() < 0.2) state.terrain[i] = {type: 'high', elev: 2, passable: true};
+                else state.terrain[i] = {type: 'flat', elev: 0, passable: true};
+            }
+            // Clear terrain on unit starts (simple)
+            state.units.forEach(u => { state.terrain[u.y * 10 + u.x] = {type: 'flat', elev: 0, passable: true}; });
+            renderGrid();
+            calculateTurnOrder();
+            nextTurn();
+        }
+
+        // Render grid
+        function renderGrid() {
+            const gridEl = document.getElementById('grid');
+            gridEl.innerHTML = '';
+            for (let i = 0; i < 100; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.dataset.x = i % 10;
+                cell.dataset.y = Math.floor(i / 10);
+                const handler = () => selectCell(cell);
+                cell.addEventListener('click', handler);
+                cell.addEventListener('touchend', handler, { passive: true });
+                gridEl.appendChild(cell);
+            }
+            updateGrid();
+        }
+
+        // Update grid
+        function updateGrid() {
+            document.querySelectorAll('.cell').forEach(cell => {
+                const x = parseInt(cell.dataset.x);
+                const y = parseInt(cell.dataset.y);
+                const terr = getTerrain(x, y);
+                cell.className = `cell ${terr.type}`;
+                cell.textContent = '';
+                const unit = state.units.find(u => u.x === x && u.y === y);
+                if (unit) {
+                    cell.className += ` ${unit.team}`;
+                    cell.textContent = unit.icon + dirMap[unit.facing];
+                }
+                if (state.selectedCell && state.selectedCell.x === x && state.selectedCell.y === y) {
+                    cell.className += ' selected';
+                }
+            });
+        }
+
+        // Select cell
+        function selectCell(cell) {
+            const x = parseInt(cell.dataset.x);
+            const y = parseInt(cell.dataset.y);
+            if (state.currentUnit && state.currentUnit.team !== state.currentTeam) return;
+            state.selectedCell = { x, y };
+            updateGrid();
+            logMessage(`Selected (${x}, ${y})`);
+            const unit = state.units.find(u => u.x === x && u.y === y);
+            if (unit) updateHud(unit);
+            else document.getElementById('hud').style.display = 'none';
+        }
+
+        // Update HUD
+        function updateHud(unit) {
+            const hudEl = document.getElementById('hud');
+            hudEl.innerHTML = `
+                <h3>${unit.name} (${unit.class})</h3>
+                <p>HP: <progress value="${unit.hp}" max="${unit.maxHp}"></progress> ${unit.hp}/${unit.maxHp}</p>
+                <p>MP: <progress value="${unit.mp}" max="${unit.maxMp}"></progress> ${unit.mp}/${unit.maxMp}</p>
+                <p>Stats: ATK ${unit.atk} | DEF ${unit.def} | MAG ${unit.mag} | SPD ${unit.speed}</p>
+                <p>Skills: ${unit.skills.join(', ')}</p>
+            `;
+            hudEl.style.display = 'block';
+        }
+
+        // Show skills menu
+        function showSkillsMenu() {
+            if (!state.currentUnit || state.currentUnit.team !== state.currentTeam) return;
+            const skillsEl = document.getElementById('skills');
+            skillsEl.innerHTML = state.currentUnit.skills.map(s => {
+                const cost = skillData[s].cost;
+                return `<button onclick="useSkill('${s}')">${s} (${cost} MP)</button>`;
+            }).join('');
+            skillsEl.style.display = 'block';
+        }
+
+        // Use skill (stub - expand effects)
+        function useSkill(skillName) {
+            const unit = state.currentUnit;
+            const data = skillData[skillName];
+            if (unit.mp < data.cost) { logMessage('Not enough MP!'); return; }
+            unit.mp -= data.cost;
+            logMessage(`${unit.name} used ${skillName}! ${data.desc}`);
+            document.getElementById('skills').style.display = 'none';
+            updateHud(unit); // Refresh MP
+            endTurn();
+        }
+
+        // Turn order
+        function calculateTurnOrder() {
+            state.turnOrder = [...state.units].sort((a, b) => b.speed - a.speed).filter(u => u.hp > 0);
+        }
+
+        // Next turn
+        function nextTurn() {
+            if (state.turnOrder.length === 0) calculateTurnOrder();
+            state.currentUnit = state.turnOrder.shift();
+            if (state.currentUnit.hp <= 0) return nextTurn();
+            if (state.currentUnit.team !== state.currentTeam) return nextTurn();
+            logMessage(`${state.currentUnit.name}'s turn (${state.currentTeam} team)!`);
+
+            const blueAlive = state.units.some(u => u.team === 'blue' && u.hp > 0);
+            const redAlive = state.units.some(u => u.team === 'red' && u.hp > 0);
+            if (!blueAlive) logMessage('Red team wins!');
+            if (!redAlive) logMessage('Blue team wins!');
+        }
+
+        // Actions
+        function move() {
+            if (!state.selectedCell || !state.currentUnit || state.currentUnit.team !== state.currentTeam) return;
+            const tx = state.selectedCell.x, ty = state.selectedCell.y;
+            const terr = getTerrain(tx, ty);
+            if (!terr.passable || state.units.some(u => u.x === tx && u.y === ty)) return;
+            let dist = manhattanDist(state.currentUnit.x, state.currentUnit.y, tx, ty);
+            const elevDiff = terr.elev - getElev(state.currentUnit.x, state.currentUnit.y);
+            if (elevDiff > 0) dist += elevDiff; // Climb cost
+            if (dist > state.currentUnit.maxMove) return;
+            state.currentUnit.x = tx;
+            state.currentUnit.y = ty;
+            state.currentUnit.facing = getFacingToTarget(state.currentUnit, tx, ty);
+            updateGrid();
+            logMessage(`${state.currentUnit.name} moved.`);
+            endTurn();
+        }
+
+        function attack() {
+            if (!state.selectedCell || !state.currentUnit || state.currentUnit.team !== state.currentTeam) return;
+            const tx = state.selectedCell.x, ty = state.selectedCell.y;
+            const target = state.units.find(u => u.x === tx && u.y === ty && u.team !== state.currentUnit.team);
+            if (!target) return;
+            const dist = manhattanDist(state.currentUnit.x, state.currentUnit.y, tx, ty);
+            if (dist > state.currentUnit.range) return;
+            if (dist > 1 && !hasLoS(state.currentUnit.x, state.currentUnit.y, tx, ty)) { logMessage('No line of sight!'); return; }
+            let dmg = Math.max(1, state.currentUnit.atk - target.def / 2);
+            const elevDiff = getElev(state.currentUnit.x, state.currentUnit.y) - getElev(tx, ty);
+            if (elevDiff > 0) dmg += 2;
+            if (state.currentUnit.class === 'Rogue' && isBehind(state.currentUnit, target)) dmg *= 2;
+            target.hp -= dmg;
+            state.currentUnit.facing = getFacingToTarget(state.currentUnit, tx, ty);
+            logMessage(`${state.currentUnit.name} hits ${target.name} for ${dmg}!`);
+            if (target.hp <= 0) removeUnit(target);
+            updateGrid();
+            endTurn();
+        }
+
+        function wait() {
+            if (!state.currentUnit || state.currentUnit.team !== state.currentTeam) return;
+            logMessage(`${state.currentUnit.name} waits.`);
+            endTurn();
+        }
+
+        function endTurn() {
+            state.currentTeam = state.currentTeam === 'blue' ? 'red' : 'blue';
+            state.selectedCell = null;
+            document.getElementById('hud').style.display = 'none';
+            document.getElementById('skills').style.display = 'none';
+            calculateTurnOrder();
+            nextTurn();
+        }
+
+        function removeUnit(unit) {
+            state.units = state.units.filter(u => u.id !== unit.id);
+            updateGrid();
+        }
+
+        function shareBattle() {
+            const code = btoa(JSON.stringify(state));
+            navigator.clipboard.writeText(code).then(() => logMessage('Full state code copied—share with opponent!'));
+        }
+
+        function loadBattle() {
+            const code = prompt('Paste opponent\'s state code:');
+            if (code) {
+                try {
+                    Object.assign(state, JSON.parse(atob(code)));
+                    renderGrid();
+                    calculateTurnOrder();
+                    nextTurn();
+                    logMessage('Loaded—your turn!');
+                } catch (e) { logMessage('Invalid code.'); }
+            }
+        }
+
+        function logMessage(msg) {
+            const logEl = document.getElementById('log');
+            logEl.innerHTML += `<p>${msg}</p>`;
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+    </script>
+</body>
+</html>
