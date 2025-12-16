@@ -189,7 +189,7 @@
     </div>
     <script>
         const classesData = [
-            {name: 'Warrior', icon: '⚔️', hp: 50, mp: 20, speed: 10, atk: 18, def: 20, mag: 5, range: 1, maxMove: 4, skills: ['Taunt', 'Cleave']},
+            {name: 'Warrior', icon: ⚔️', hp: 50, mp: 20, speed: 10, atk: 18, def: 20, mag: 5, range: 1, maxMove: 4, skills: ['Taunt', 'Cleave']},
             {name: 'Healer', icon: '✨', hp: 40, mp: 40, speed: 12, atk: 8, def: 12, mag: 18, range: 1, maxMove: 5, skills: ['Restore', 'Aura']},
             {name: 'Mage', icon: '🔮', hp: 30, mp: 50, speed: 15, atk: 6, def: 8, mag: 20, range: 4, maxMove: 4, skills: ['Fireball', 'Frostbind']},
             {name: 'Archer', icon: '🏹', hp: 35, mp: 30, speed: 16, atk: 17, def: 13, mag: 7, range: 5, maxMove: 5, skills: ['Pierce', 'Volley']},
@@ -421,7 +421,7 @@
             if (dist > state.currentUnit.range || (dist > 1 && !hasLoS(state.currentUnit.x, state.currentUnit.y, target.x, target.y))) return;
             let dmg = Math.max(1, state.currentUnit.atk - target.def / 2);
             const heightDiff = getTerrain(state.currentUnit.x, state.currentUnit.y).height - getTerrain(target.x, target.y).height;
-            dmg *= (1 + heightDiff * 0.1); // +10% per level
+            dmg *= (1 + heightDiff * 0.1);
             if (state.currentUnit.name === 'Rogue' && isBehind(state.currentUnit, target)) dmg *= 2;
             target.hp -= Math.floor(dmg);
             logMessage(`${state.currentUnit.name} hits ${target.name} for ${Math.floor(dmg)}!`);
